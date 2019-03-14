@@ -60,6 +60,8 @@ class GroundStation(BaseWidget):
             'Tab2': ['_mapImage']
         }]
 
+        self.update_my_loc_handler()
+
     def run_event(self):
         """
         After setting the best parameters run the full algorithm
@@ -72,18 +74,14 @@ class GroundStation(BaseWidget):
         self.map = cv2.circle(self.blankmap.to_numpy(), (int(x), int(y)), 2, (255, 0, 0), -1)
         self._mapImage.value = self.map
 
-
-def do_the_thing():
-    for x in range(100):
-        if gs != 0:
-            gs.update_my_loc(41.736750 + x / 1000, -72.868944)
-        time.sleep(.1)
+    def update_my_loc_handler(self):
+        self.update_my_loc(41.736750, -72.868944)
+        self._mapImage.show()
+        threading.Timer(10, self.do_the_thing).start()
 
 
 if __name__ == '__main__':
     from pyforms import start_app
-
-    threading.Timer(10, do_the_thing).start()
 
     start_app(GroundStation)
 
