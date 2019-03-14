@@ -8,7 +8,13 @@ from pyforms.controls import ControlImage
 import cv2
 import smopy
 import time
+import serial
 import threading
+import pynmea2
+
+
+port = "/dev/ttyUSB0"
+ser = serial.Serial(port, baudrate=4800, timeout=0.5)
 
 mapScale = [
     360,
@@ -33,8 +39,6 @@ mapScale = [
     0.0005
 ]
 
-mapCenterLat = 41.730202
-mapCenterLong = -72.839729
 gs = 0
 
 
@@ -43,14 +47,18 @@ class GroundStation(BaseWidget):
     def __init__(self, *args, **kwargs):
         super().__init__('Ground Station Software')
 
+        self.mapCenterLat = 41.0730202
+        self.mapCenterLong = -72.0839729
+
         # Definition of the forms fields
         self._runbutton = ControlButton('Run')
         self._mapImage = ControlImage('map')
 
-        map = smopy.Map((mapCenterLat - mapScale[13] / 2, mapCenterLong - mapScale[13] / 2, mapCenterLat + mapScale[13] / 2, mapCenterLong + mapScale[13] / 2), z=13, tileserver='http://192.168.1.152/osm_tiles/{z}/{x}/{y}.png')
-        self.blankmap = map
-        self.map = self.blankmap
-        self._mapImage.value = self.map.to_numpy()
+        self.scaleyboi = 18
+        newmap = smopy.Map((self.mapCenterLat - mapScale[self.scaleyboi] / 2, self.mapCenterLong - mapScale[self.scaleyboi] / 2, self.mapCenterLat + mapScale[self.scaleyboi] / 2, self.mapCenterLong + mapScale[self.scaleyboi] / 2), z=self.scaleyboi, tileserver='http://192.168.1.152/osm_tiles/{z}/{x}/{y}.png')
+        self.blank_map = newmap
+        self.map = self.blank_map.to_numpy()
+        self._mapImage.value = self.map
 
         self._runbutton.value = self.run_event
 
@@ -61,6 +69,7 @@ class GroundStation(BaseWidget):
         }]
 
         self.update_my_loc_handler()
+        self.update_map_center_handler()
 
     def run_event(self):
         """
@@ -70,14 +79,38 @@ class GroundStation(BaseWidget):
         print("The function was executed")
 
     def update_my_loc(self, lat, long):
-        x, y = self.blankmap.to_pixels(lat, long)
-        self.map = cv2.circle(self.blankmap.to_numpy(), (int(x), int(y)), 2, (255, 0, 0), -1)
+        x, y = self.blank_map.to_pixels(lat, long)
+        self.map = cv2.circle(self.blank_map.to_numpy(), (int(x), int(y)), 2, (255, 0, 0), -1)
         self._mapImage.value = self.map
 
     def update_my_loc_handler(self):
-        self.update_my_loc(41.736750, -72.868944)
-        self._mapImage.show()
-        threading.Timer(10, self.do_the_thing).start()
+        try:
+            data = ser.readline()
+            # print("data ", data)
+            if data[0:6] == b'$GPGGA':
+                msg = pynmea2.parse(str(data, "utf-8"))
+                if msg.gps_qual != "0":
+                    newlat = float(msg.lat[0:2]) + float(msg.lat[2:])/60.0
+                    if msg.lat_dir == "S":
+                        newlat = -newlat
+                    newlon = float(msg.lon[0:3]) + float(msg.lon[3:])/60.0
+                    if msg.lon_dir == "W":
+                        newlon = -newlon
+                    # print("lat: ", newlat, " long: ", newlon)
+                    self.mapCenterLat = newlat
+                    self.mapCenterLong = newlon
+                    self.update_my_loc(newlat, newlon)
+                    self._mapImage.show()
+        except:
+            print("Something went wrong")
+        threading.Timer(1, self.update_my_loc_handler).start()
+
+    def update_map_center_handler(self):
+        new_map = smopy.Map((self.mapCenterLat - mapScale[self.scaleyboi] / 2, self.mapCenterLong - mapScale[self.scaleyboi] / 2,
+                            self.mapCenterLat + mapScale[self.scaleyboi] / 2, self.mapCenterLong + mapScale[self.scaleyboi] / 2), z=self.scaleyboi,
+                            tileserver='http://192.168.1.152/osm_tiles/{z}/{x}/{y}.png')
+        self.blank_map = new_map
+        threading.Timer(10, self.update_map_center_handler).start()
 
 
 if __name__ == '__main__':
