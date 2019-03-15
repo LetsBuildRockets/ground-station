@@ -1,15 +1,23 @@
+from typing import Any, IO
+
 from PyQt5 import QtGui
 
 from PyQt5.QtWidgets import QApplication, QLabel
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import QTimer
 import smopy
-import sys
 import cv2
 import serial
 import pynmea2
 import numpy as np
+import subprocess, time, os, sys
+import threading
 
+cmd = ["ssh", "192.168.1.37", "-X", "export DISPLAY=:0; gqrx"]
+
+p = subprocess.Popen(cmd,
+                     stdout=subprocess.PIPE,
+                     stderr=subprocess.STDOUT)
 
 port = "/dev/ttyUSB0"
 ser = serial.Serial(port, baudrate=4800, timeout=0.5)
@@ -40,25 +48,47 @@ mapScale = [
 app = QApplication([])
 
 mapCenterLat = 41.7390592
-mapCenterLong = -72.8686592
+mapCenterLon = -72.8686592
 
-scaleyboi = 13
+groundstationLat = 0
+groundstationLon = 0
+
+rocketLat = 0
+rocketLon = 0
+
+scaleyboi = 14
 
 we_have_gs_gps_lock = False
+we_have_rocket_gps_lock = False
 
 label = QLabel('GPS')
 label.show()
 
-# global label2
-# label2 = QLabel('IMU')
-# label2.show()
+
+def redraw():
+    map_thing = np.copy(blank_map_numpy)
+    if we_have_gs_gps_lock:
+        x, y = blank_map.to_pixels(groundstationLat, groundstationLon)
+        cv2.circle(map_thing, (int(x), int(y)), 10, (0, 0, 255), 2)
+    else:
+        cv2.putText(map_thing, "no ground station gps lock", (10, 60), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 0), 4)
+
+    if we_have_rocket_gps_lock:
+        x, y = blank_map.to_pixels(rocketLat, rocketLon)
+        cv2.circle(map_thing, (int(x), int(y)), 10, (0, 0, 255), 2)
+    else:
+        cv2.putText(map_thing, "no rocket gps lock", (10, 120), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 0), 4)
+
+    height, width, channel = map_thing.shape
+    q_img = QImage(map_thing.data, width, height, 3 * width, QImage.Format_RGB888)
+    label.setPixmap(QPixmap.fromImage(q_img))
 
 
 def update_background_map():
     global label, blank_map, scaleyboi, blank_map_numpy
-    newmap = smopy.Map((mapCenterLat - mapScale[scaleyboi] / 2, mapCenterLong - mapScale[scaleyboi] / 2,
+    newmap = smopy.Map((mapCenterLat - mapScale[scaleyboi] / 2, mapCenterLon - mapScale[scaleyboi] / 2,
                         mapCenterLat + mapScale[scaleyboi] / 2,
-                        mapCenterLong + mapScale[scaleyboi] / 2), z=scaleyboi,
+                        mapCenterLon + mapScale[scaleyboi] / 2), z=scaleyboi,
                        tileserver='http://192.168.1.152/osm_tiles/{z}/{x}/{y}.png')
     newmap.save_png('map.png')
     blank_map = newmap
@@ -68,24 +98,14 @@ def update_background_map():
     label.setPixmap(QPixmap.fromImage(qImg))
 
 
-def update_my_loc(lat, long):
-    global blank_map
-    x, y = blank_map.to_pixels(lat, long)
-    map_thing = np.copy(blank_map_numpy)
-    cv2.circle(map_thing, (int(x), int(y)), 10, (0, 0, 255), 2)
-    height, width, channel = map_thing.shape
-    q_img = QImage(map_thing.data, width, height, 3 * width, QImage.Format_RGB888)
-    label.setPixmap(QPixmap.fromImage(q_img))
-
-
 def update_my_loc_handler():
-    global we_have_gs_gps_lock
+    global we_have_gs_gps_lock, groundstationLat, groundstationLon
     try:
         timeoutcount = 10
         data = b''
         while timeoutcount > 0 and data[0:6] != b'$GPGGA':
             data = ser.readline()
-        # print("data ", data)
+        print("data ", data)
         ser.flushInput()
         if data[0:6] == b'$GPGGA':
             if data.__len__() > 60:
@@ -98,20 +118,56 @@ def update_my_loc_handler():
                     if msg.lon_dir == "W":
                         newlon = -newlon
                     # print("lat: ", newlat, " long: ", newlon)
-                    update_my_loc(newlat, newlon)
+                    groundstationLat = newlat
+                    groundstationLon = newlon
                     we_have_gs_gps_lock = True
             else:
                 # print("No ground station gps lock")
                 we_have_gs_gps_lock = False
+            redraw()
         if we_have_gs_gps_lock is False:
             print("No ground station gps lock")
-            map_thing = np.copy(blank_map_numpy)
-            cv2.putText(map_thing, "no ground station gps lock", (10, 60), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 0), 4)
-            height, width, channel = map_thing.shape
-            q_img = QImage(map_thing.data, width, height, 3 * width, QImage.Format_RGB888)
-            label.setPixmap(QPixmap.fromImage(q_img))
     except:
         print("Something went wrong")
+
+
+def update_rocket_loc_handler():
+    global we_have_rocket_gps_lock, rocketLat, rocketLon
+    while True:
+        line = p.stdout.readline()
+        print("first part: ", line[0:22])
+        if line[0:22] == b'AFSK1200: fm KC1KKR-11':
+            AFSKline = (p.stdout.readline()).decode('ascii')
+            print("AFSKLINE: ", AFSKline)
+            if AFSKline.__len__() > 40:
+                time = AFSKline[1:7]
+                print("time: ", time)
+
+                lat = AFSKline[8:15]
+                lat_dir = AFSKline[15]
+                print("lat: ", lat, lat_dir)
+
+                lon = AFSKline[17:25]
+                lon_dir = AFSKline[25]
+                print("lat: ", lon, lon_dir)
+
+                msg = AFSKline[44:]
+                print("msg: ", msg)
+
+                newlat = float(lat[0:2]) + float(lat[2:]) / 60.0
+                if lat_dir == "S":
+                    newlat = -newlat
+                newlon = float(lon[0:3]) + float(lon[3:]) / 60.0
+                if lon_dir == "W":
+                    newlon = -newlon
+
+                if newlon != 0 and newlat != 0:
+                    we_have_rocket_gps_lock = True
+                rocketLat = newlat
+                rocketLon = newlon
+                redraw()
+
+        print(">> dat ", (line.rstrip()))
 
 
 if __name__ == "__main__":
@@ -122,4 +178,8 @@ if __name__ == "__main__":
     timer1.timeout.connect(update_my_loc_handler)
     timer1.start(5000)
 
-    sys.exit(app.exec_())
+    timer2 = threading.Thread(target=update_rocket_loc_handler)
+    timer2.start()
+
+    app.exec_()
+    sys.exit()
