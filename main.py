@@ -75,7 +75,7 @@ def redraw():
 
     if we_have_rocket_gps_lock:
         x, y = blank_map.to_pixels(rocketLat, rocketLon)
-        cv2.circle(map_thing, (int(x), int(y)), 10, (0, 0, 255), 2)
+        cv2.circle(map_thing, (int(x), int(y)), 6, (255, 0, 0), 2)
     else:
         cv2.putText(map_thing, "no rocket gps lock", (10, 120), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 0), 4)
 
@@ -90,7 +90,7 @@ def update_background_map():
                         mapCenterLat + mapScale[scaleyboi] / 2,
                         mapCenterLon + mapScale[scaleyboi] / 2), z=scaleyboi,
                        tileserver='http://192.168.1.152/osm_tiles/{z}/{x}/{y}.png')
-    newmap.save_png('map.png')
+    # newmap.save_png('map.png')
     blank_map = newmap
     blank_map_numpy = blank_map.to_numpy()
     height, width, channel = blank_map_numpy.shape
