@@ -42,7 +42,7 @@ app = QApplication([])
 mapCenterLat = 41.7390592
 mapCenterLong = -72.8686592
 
-scaleyboi = 15
+scaleyboi = 13
 
 we_have_gs_gps_lock = False
 
@@ -66,7 +66,6 @@ def update_background_map():
     height, width, channel = blank_map_numpy.shape
     qImg = QImage(blank_map_numpy.data, width, height, 3 * width, QImage.Format_RGB888)
     label.setPixmap(QPixmap.fromImage(qImg))
-    print("done")
 
 
 def update_my_loc(lat, long):
@@ -82,9 +81,12 @@ def update_my_loc(lat, long):
 def update_my_loc_handler():
     global we_have_gs_gps_lock
     try:
-        data = ser.readline()
+        timeoutcount = 10
+        data = b''
+        while timeoutcount > 0 and data[0:6] != b'$GPGGA':
+            data = ser.readline()
+        # print("data ", data)
         ser.flushInput()
-        print("data ", data)
         if data[0:6] == b'$GPGGA':
             if data.__len__() > 60:
                 msg = pynmea2.parse(str(data, "utf-8"))
@@ -101,7 +103,7 @@ def update_my_loc_handler():
             else:
                 # print("No ground station gps lock")
                 we_have_gs_gps_lock = False
-        if we_have_gs_gps_lock == False:
+        if we_have_gs_gps_lock is False:
             print("No ground station gps lock")
             map_thing = np.copy(blank_map_numpy)
             cv2.putText(map_thing, "no ground station gps lock", (10, 60), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 0), 4)
@@ -118,6 +120,6 @@ if __name__ == "__main__":
     timer1 = QTimer()
     timer1.setSingleShot(False)
     timer1.timeout.connect(update_my_loc_handler)
-    timer1.start(1000)
+    timer1.start(5000)
 
     sys.exit(app.exec_())
