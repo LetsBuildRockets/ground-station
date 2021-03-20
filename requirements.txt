@@ -25,7 +25,7 @@ idna==2.8
 ipython==7.3.0
 ipython-genutils==0.2.0
 jedi==0.13.2
-Jinja2==2.8
+Jinja2==2.11.3
 kiwisolver==1.0.1
 language-selector==0.1
 louis==2.6.4
