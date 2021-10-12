@@ -36,7 +36,7 @@ matplotlib==3.0.2
 numpy==1.16.2
 oauthlib==1.0.3
 onboard==1.2.0
-opencv-python==4.0.0.21
+opencv-python==4.1.1.26
 Orquestra==1.1
 padme==1.1.1
 parso==0.3.4
