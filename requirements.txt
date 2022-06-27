@@ -69,7 +69,7 @@ python-systemd==231
 pytz==2018.9
 pyxdg==0.25
 QScintilla==2.11.1
-reportlab==3.3.0
+reportlab==3.5.55
 requests==2.21.0
 sessioninstaller==0.0.0
 simplejson==3.16.0
